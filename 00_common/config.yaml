@@ -1,0 +1,77 @@
+# =============================================================
+# 프로젝트 중앙 설정 (모든 스크립트가 common.load_config()로 읽음)
+# 사람이 고치는 것은 이 파일 하나. 나머지 lora_*.generated.yaml은 파생물.
+#
+# 주의(아카이브 메모): 맥 원본 config.yaml을 설계 설명대로 재구성한 것.
+#   정본은 맥 ~/qwen-domain-ft/configs/config.yaml (실제 값이 조금 다를 수 있음).
+# =============================================================
+
+model:
+  name: mlx-community/Qwen2.5-7B-Instruct-4bit
+
+system_prompt: |
+  당신은 조직 내부 규정에 답하는 한국어 업무 어시스턴트입니다.
+  규정에 근거해 정확히 답하고, 근거가 없으면 지어내지 말고 담당 부서 확인을 안내하세요.
+
+# ---- 데이터 파일 경로 ----
+data:
+  raw_file: data/raw/dataset.jsonl
+  validated_file: data/validated/dataset.jsonl
+  report_file: data/validated/validation_report.md
+
+# ---- 검증(validate_data.py) ----
+validation:
+  min_question_chars: 6
+  max_question_chars: 200
+  min_answer_chars: 10
+  max_answer_chars: 800
+  min_korean_ratio: 0.30        # 답변의 한글 비율 하한
+  max_cjk_other_ratio: 0.05     # 한자/가나 비율 상한 (중국어 오염 차단)
+  drop_url_only_answers: true
+  drop_duplicates: true
+
+# ---- 데이터 혼합(build_dataset.py) ----
+data_mix:
+  refusal_ratio: 0.13           # 도메인 대비 거절 예시 비율
+  replay_ratio: 0.15            # 도메인 대비 replay 비율
+
+# ---- 분할(prepare_data.py) ----
+prepare:
+  output_dir: data/processed
+  seed: 42
+  valid_ratio: 0.10
+  test_ratio: 0.10
+  max_samples: 0                # >0이면 소규모 리허설
+
+# ---- 1단계 학습(train.sh) ----
+training:
+  adapter_dir: adapters/run3
+  num_layers: 16
+  batch_size: 4
+  iters: 200
+  learning_rate: 1.0e-05
+  steps_per_report: 10
+  steps_per_eval: 25
+  save_every: 25
+  max_seq_length: 2048
+
+# ---- RAG(embed/search/chat) ----
+rag:
+  embedding_model: BAAI/bge-m3
+  chunks_file: data/synth/chunks.jsonl
+  index_file: data/rag/index.npz
+  top_k: 3
+
+# ---- 3~4단계 결합/CoT 학습(train_rag.sh) ----
+rag_training:
+  output_dir: data/processed_rag
+  adapter_dir: adapters/run5      # run4b → run5 로 바꿔가며 재사용
+  iters: 180
+  batch_size: 4
+  num_layers: 16
+  learning_rate: 1.0e-05
+  steps_per_eval: 25
+  save_every: 25
+  valid_ratio: 0.06
+  replay_ratio: 0.10
+  max_seq_length: 2048
